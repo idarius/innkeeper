@@ -86,6 +86,8 @@ export function login(username: string, password: string, address: string) {
 		return { admin } as const;
 	}
 	attempts.set(address, entry && entry.reset > now ? { ...entry, count: entry.count + 1 } : { count: 1, reset: now + 15 * 60_000 });
+	// Les adresses dont le quart d'heure est écoulé ne servent plus : on les oublie.
+	if (attempts.size > 1000) for (const [a, e] of attempts) if (e.reset <= now) attempts.delete(a);
 	return { error: 'Identifiants incorrects.' } as const;
 }
 

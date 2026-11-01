@@ -76,6 +76,35 @@ describe('moteur de synchronisation', () => {
 		expect(engine.state.status).toBe('synced');
 	});
 
+	it('un fichier illisible n’empêche pas d’envoyer ceux des autres comptes, et sera relu plus tard', async () => {
+		const OTHER = 'C:\\WoW\\_forever_\\WTF\\Account\\COMPTE2\\SavedVariables\\InnkeeperSync.lua';
+		let locked = true;
+		let now = 1_000_000;
+		const send = vi.fn(async () => ok);
+		const engine = new SyncEngine({
+			send,
+			find: async () => [FILE, OTHER],
+			stat: async () => ({ mtimeMs: 1, size: 10 }),
+			// Le jeu tient encore le premier fichier (écriture en cours, antivirus…).
+			read: async (path) => {
+				if (path === FILE && locked) throw new Error('EBUSY: resource busy or locked');
+				return new Uint8Array(1);
+			},
+			now: () => now
+		});
+		engine.configure({ siteUrl: 'https://g.fr', token: 'iks_x', gameDir: 'C:\\WoW' });
+		await engine.tick();
+		await engine.tick();
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(engine.state.events.map((e) => e.account).sort()).toEqual(['COMPTE1', 'COMPTE2']);
+		expect(engine.state.events.find((e) => e.account === 'COMPTE1')).toMatchObject({ ok: false });
+
+		locked = false;
+		now += 60_000;
+		await engine.tick();
+		expect(send).toHaveBeenCalledTimes(2);
+	});
+
 	it('nomme le compte et résume le résultat', () => {
 		expect(accountOf(FILE)).toBe('COMPTE1');
 		expect(accountOf('/jeu/WTF/Account/MOI/SavedVariables/InnkeeperSync.lua')).toBe('MOI');

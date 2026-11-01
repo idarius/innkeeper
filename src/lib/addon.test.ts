@@ -14,6 +14,12 @@ describe('addon InnkeeperSync', () => {
 		expect(field('SavedVariables')).toBe('InnkeeperSyncDB');
 	});
 
+	it('n’exporte pas les notes du registre ni la zone, dont le site ne se sert pas', () => {
+		const lua = readFileSync(`${dir}/InnkeeperSync.lua`, 'utf8');
+		const roster = lua.slice(lua.indexOf('local function readRoster'), lua.indexOf('local function readGuildProfessions'));
+		expect(roster).not.toMatch(/officerNote|publicNote|zone\s*=/);
+	});
+
 	it('annonce sa version dans son journal des modifications', () => {
 		const version = field('Version');
 		expect(version).toMatch(/^\d+\.\d+\.\d+$/);

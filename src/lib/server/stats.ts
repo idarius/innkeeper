@@ -9,10 +9,10 @@ import { getGameImport, getGuild } from './settings';
 /** Chiffres anonymes de la guilde pour l'accueil public : aucun nom, seulement des comptes. */
 export function publicStats() {
 	const players = db()
-		.select({ roles: schema.users.roles })
+		.select({ roles: schema.users.roles, inGuild: schema.users.inGuild })
 		.from(schema.users)
 		.all()
-		.filter((u) => permissionFor(u.roles)).length;
+		.filter((u) => permissionFor(u)).length;
 	const characters = db().select({ n: count() }).from(schema.characters).get()?.n ?? 0;
 	// Répartition sur les mains : un joueur compte une fois.
 	const mains = db()
@@ -51,7 +51,7 @@ export function officerStats(now = new Date()) {
 		.select()
 		.from(schema.users)
 		.all()
-		.filter((u) => permissionFor(u.roles));
+		.filter((u) => permissionFor(u));
 	const ids = new Set(members.map((u) => u.discordId));
 	const chars = db()
 		.select()

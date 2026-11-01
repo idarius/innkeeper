@@ -37,10 +37,15 @@ async function reread(eventId: string, userId: string) {
 	return event ? mySignup(event, userId) : null;
 }
 
+// Comme sur la page de la sortie : on ne change plus les inscriptions une fois la sortie commencée.
+const STARTED = 'Cette sortie a déjà commencé : les inscriptions ne se modifient plus depuis le site.';
+const started = (event: RaidHelperEvent, now = Date.now()) => event.startTime <= now / 1000;
+
 const failure = (e: unknown) => (e instanceof RaidHelperError ? e.message : 'Raid-Helper ne répond pas, réessaie dans un instant.');
 
 /** Crée ou modifie l'inscription du membre. Renvoie un message d'erreur, ou null. */
 export async function saveSignup(event: RaidHelperEvent, apiKey: string, userId: string, input: z.output<typeof signupSchema>) {
+	if (started(event)) return STARTED;
 	const character = listCharacters(userId).find((c) => c.id === input.characterId);
 	if (!character) return 'Ce perso ne t’appartient pas.';
 	const payload = signupPayload(character, input.slot, input.status);
@@ -60,6 +65,7 @@ export async function saveSignup(event: RaidHelperEvent, apiKey: string, userId:
 }
 
 export async function cancelSignup(event: RaidHelperEvent, apiKey: string, userId: string) {
+	if (started(event)) return STARTED;
 	const current = mySignup(event, userId);
 	if (!current) return null;
 	try {

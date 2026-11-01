@@ -3,7 +3,7 @@
 ## Notes: Exports your guild roster, professions and recipes for Innkeeper, your guild's web portal.
 ## Notes-frFR: Exporte le registre de guilde, les métiers et les recettes pour Innkeeper, le portail de la guilde.
 ## Author: Innkeeper
-## Version: 1.2.0
+## Version: 1.2.1
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## SavedVariables: InnkeeperSyncDB
 ## X-License: AGPL-3.0-only

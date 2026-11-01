@@ -109,8 +109,15 @@ export class SyncEngine {
 
 	private async send(c: { siteUrl: string; token: string }, path: string, fileState: FileState, wait?: { delay: number }) {
 		const account = accountOf(path);
+		let file: Uint8Array;
 		try {
-			const result = await this.deps.send(c.siteUrl, c.token, await this.deps.read(path));
+			file = await this.deps.read(path);
+		} catch (e) {
+			// Fichier encore tenu par le jeu, antivirus… : on le relira plus tard, sans bloquer les autres comptes.
+			return this.later(path, account, `Fichier illisible pour l’instant (${e instanceof Error ? e.message : e}).`, wait);
+		}
+		try {
+			const result = await this.deps.send(c.siteUrl, c.token, file);
 			this.tracker.done(path, fileState);
 			this.retry.delete(path);
 			this.log(account, describeResult(result), true, { status: 'synced', detail: null, lastSyncAt: this.deps.now() });
@@ -123,10 +130,15 @@ export class SyncEngine {
 				this.tracker.done(path, fileState);
 				return this.log(account, e.message, false, {});
 			}
-			const delay = Math.min((wait?.delay ?? RETRY_MIN_MS / 2) * 2, RETRY_MAX_MS);
-			this.retry.set(path, { at: this.deps.now() + delay, delay });
-			this.log(account, `${e.message} Nouvel essai dans ${Math.round(delay / 1000)} s.`, false, { status: 'retrying', detail: e.message });
+			this.later(path, account, e.message, wait);
 		}
+	}
+
+	/** Nouvel essai pour ce fichier, de plus en plus tard. */
+	private later(path: string, account: string, message: string, wait?: { delay: number }) {
+		const delay = Math.min((wait?.delay ?? RETRY_MIN_MS / 2) * 2, RETRY_MAX_MS);
+		this.retry.set(path, { at: this.deps.now() + delay, delay });
+		this.log(account, `${message} Nouvel essai dans ${Math.round(delay / 1000)} s.`, false, { status: 'retrying', detail: message });
 	}
 
 	private log(account: string, message: string, ok: boolean, patch: Partial<EngineState>) {

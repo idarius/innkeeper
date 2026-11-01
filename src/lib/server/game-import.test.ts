@@ -37,6 +37,14 @@ describe('lecture des SavedVariables', () => {
 		expect(typeof g.B).toBe('string');
 	});
 
+	it('reconstitue l’UTF-8 écrit octet par octet (\\ddd)', () => {
+		// É = \195\137 et é = \195\169, mêlés à des caractères écrits tels quels.
+		const g = parseSavedVariables('A = "\\195\\137lise"\nB = "Ça \\195\\169t\\195\\169"\nC = "\\065\\066"\n');
+		expect(g.A).toBe('Élise');
+		expect(g.B).toBe('Ça été');
+		expect(g.C).toBe('AB');
+	});
+
 	it('refuse ce qui n’est pas des données (aucune exécution)', () => {
 		expect(() => parseSavedVariables('A = os.execute("rm -rf /")')).toThrow();
 		expect(() => readExport('Autre = {}')).toThrow(ImportError);
@@ -133,6 +141,61 @@ describe('présence en jeu des persos', () => {
 		const before = getGameImport();
 		const data = readExport(fixture);
 		applyImport(planImport({ ...data, roster: undefined, guildProfessions: undefined }));
+		expect(getGameImport()).toEqual(before);
+	});
+});
+
+describe('ordre des exports', () => {
+	// Export minimal : Zuljin dans le registre, à une date et un niveau donnés.
+	const exportAt = (exportedAt: number, level: number) => ({
+		format: 1,
+		exportedAt,
+		roster: [{ name: 'Zuljin', level, class: 'SHAMAN', rank: 'Membre', offline: { days: 1 } }]
+	});
+
+	it('un export plus ancien que les données de la fiche ne les remplace pas', () => {
+		createUser('u6');
+		const zuljin = sheet('u6', 'Zuljin');
+		applyImport(planImport(exportAt(1793600000, 42)));
+		expect(getCharacter(zuljin.id)).toMatchObject({ level: 42 });
+		const lastOnline = getCharacter(zuljin.id)!.lastOnlineAt;
+
+		// Fichier de la veille, renvoyé après coup (second compte WoW, export d'un autre joueur…).
+		const old = planImport(exportAt(1793500000, 20));
+		expect(old.outdated).toEqual(['Zuljin']);
+		expect(old.updates.find((u) => u.characterId === zuljin.id)).toEqual({ characterId: zuljin.id, name: 'Zuljin', player: 'Joueur u6', outdated: true });
+		expect(applyImport(old)).toBe(0);
+		expect(getCharacter(zuljin.id)).toMatchObject({ level: 42, lastOnlineAt: lastOnline });
+
+		// Un export plus récent passe.
+		applyImport(planImport(exportAt(1793700000, 43)));
+		expect(getCharacter(zuljin.id)).toMatchObject({ level: 43 });
+	});
+
+	it('les recettes d’un export plus ancien s’ajoutent quand même, sans rien retirer', () => {
+		createUser('u7');
+		const voljin = sheet('u7', 'Voljin');
+		const forge = (list: { id: number; name: string }[]) => ({ skill164: { skillLine: 164, skill: 150, list } });
+		const own = (exportedAt: number, list: { id: number; name: string }[]) => ({ format: 1, exportedAt, player: { name: 'Voljin', level: 30 }, recipes: forge(list) });
+		applyImport(planImport(own(1793500000, [{ id: 2662, name: 'Ceinture en cuivre' }])));
+		// Registre de guilde plus récent, envoyé par un officier : il ne contient aucune recette.
+		applyImport(planImport({ format: 1, exportedAt: 1793600000, roster: [{ name: 'Voljin', level: 31, class: 'SHAMAN', rank: 'Membre', offline: { days: 0 } }] }));
+
+		// Export du joueur arrivé en retard : niveau ignoré, mais la recette apprise entre-temps est gardée.
+		const late = planImport(own(1793550000, [{ id: 2662, name: 'Ceinture en cuivre' }, { id: 2663, name: 'Bracelets en cuivre' }]));
+		expect(late.outdated).toEqual(['Voljin']);
+		applyImport(late);
+		const saved = getCharacter(voljin.id)!;
+		expect(saved.level).toBe(31);
+		expect(saved.knownRecipes?.[0].recipes.map((r) => r.id)).toEqual([2662, 2663]);
+		// Le même fichier renvoyé n'apporte plus rien.
+		expect(planImport(own(1793550000, [{ id: 2663, name: 'Bracelets en cuivre' }])).updates[0].recipes).toBeUndefined();
+	});
+
+	it('un registre plus ancien que le dernier importé ne déplace pas la référence « vu en jeu »', async () => {
+		const { getGameImport } = await import('./settings');
+		const before = getGameImport();
+		applyImport(planImport(exportAt(1793400000, 10)));
 		expect(getGameImport()).toEqual(before);
 	});
 });

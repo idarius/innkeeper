@@ -1,0 +1,1 @@
+ALTER TABLE `characters` ADD `game_exported_at` integer;

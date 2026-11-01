@@ -80,7 +80,6 @@ InnkeeperSyncDB = {
 			["class"] = "SHAMAN",
 			["level"] = 42,
 			["name"] = "Drektar",
-			["officerNote"] = "officier",
 			["offline"] = {
 				["days"] = 0,
 				["hours"] = 0,
@@ -88,16 +87,13 @@ InnkeeperSyncDB = {
 				["years"] = 0,
 			},
 			["online"] = true,
-			["publicNote"] = "",
 			["rank"] = "Officier",
 			["rankIndex"] = 1,
-			["zone"] = "Orgrimmar",
 		}, -- [1]
 		{
 			["class"] = "HUNTER",
 			["level"] = 17,
 			["name"] = "Krenna",
-			["officerNote"] = "",
 			["offline"] = {
 				["days"] = 3,
 				["hours"] = 5,
@@ -105,16 +101,13 @@ InnkeeperSyncDB = {
 				["years"] = 0,
 			},
 			["online"] = false,
-			["publicNote"] = "",
 			["rank"] = "Recrue",
 			["rankIndex"] = 4,
-			["zone"] = "Tarides",
 		}, -- [2]
 		{
 			["class"] = "WARLOCK",
 			["level"] = 9,
 			["name"] = "Inconnu",
-			["officerNote"] = "",
 			["offline"] = {
 				["days"] = 2,
 				["hours"] = 0,
@@ -122,10 +115,8 @@ InnkeeperSyncDB = {
 				["years"] = 0,
 			},
 			["online"] = false,
-			["publicNote"] = "",
 			["rank"] = "Recrue",
 			["rankIndex"] = 4,
-			["zone"] = "Durotar",
 		}, -- [3]
 	},
 	["rosterAt"] = 1793500000,

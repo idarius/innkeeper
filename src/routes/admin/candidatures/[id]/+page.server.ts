@@ -85,15 +85,16 @@ export const actions: Actions = {
 		if (down > 0 && form.get('confirm') !== 'on')
 			return fail(400, { error: 'Il y a des avis défavorables : coche la case de confirmation pour accepter quand même.' });
 		const message = String(form.get('message') ?? '').trim().slice(0, 1000) || null;
-		const arrivalError = await acceptApplication(app, voter, message);
+		const accepted = await acceptApplication(app, voter, message);
+		if (!accepted) return fail(400, { error: 'La décision est déjà prise.' });
 		audit(locals, 'application.accept', target(app), { avisDefavorables: down || undefined, message: message ?? undefined });
-		return { decided: 'accepted', arrivalError };
+		return { decided: 'accepted', arrivalError: accepted.arrivalError };
 	},
 	refuse: async ({ locals, params, request }) => {
 		const { app, voter } = loadApplication(locals, params.id);
 		if (app.status !== 'pending') return fail(400, { error: 'La décision est déjà prise.' });
 		const message = String((await request.formData()).get('message') ?? '').trim().slice(0, 1000) || null;
-		refuseApplication(app, voter, message);
+		if (!refuseApplication(app, voter, message)) return fail(400, { error: 'La décision est déjà prise.' });
 		audit(locals, 'application.refuse', target(app), { message: message ?? undefined });
 		return { decided: 'refused' };
 	},

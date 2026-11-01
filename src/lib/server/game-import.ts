@@ -4,7 +4,7 @@ import { CLASSES, MAX_PRIMARY_PROFESSIONS, MAX_PROFESSION_LEVEL, PROFESSIONS } f
 import { db, schema } from './db';
 import type { Character, KnownRecipes, ProfessionEntry } from './db/schema';
 import { parseSavedVariables, toPlain } from './lua-saved-variables';
-import { setGameImport } from './settings';
+import { getGameImport, setGameImport } from './settings';
 
 // Import de l'export de l'addon InnkeeperSync : met à jour niveau, métiers, dernière
 // connexion en jeu et recettes des fiches du site, en reliant les persos par leur nom
@@ -96,6 +96,8 @@ export interface CharacterUpdate {
 	professions?: { from: ProfessionEntry[]; to: ProfessionEntry[] };
 	recipes?: KnownRecipes[];
 	lastOnlineAt?: Date;
+	/** La fiche a des données d'un export plus récent : reconnue en jeu, rien n'est remplacé. */
+	outdated?: true;
 }
 
 export interface ImportPlan {
@@ -106,6 +108,8 @@ export interface ImportPlan {
 	withoutSheet: { name: string; level: number; class: string | null; rank: string | null }[];
 	/** Noms portés par plusieurs fiches : non mis à jour. */
 	ambiguous: string[];
+	/** Fiches déjà mises à jour par un export plus récent que celui-ci : non remplacées. */
+	outdated: string[];
 	/** Fiches du site absentes de la guilde en jeu (seulement si l'export contient le registre). */
 	notFound: { characterId: number; name: string; player: string }[];
 	rosterSize: number;
@@ -143,7 +147,7 @@ export function planImport(data: GameExport): ImportPlan {
 		.map((r) => ({ profession: professionBySkillLine(r.skillLine, r.name)?.id ?? r.name ?? '?', skill: r.skill ?? null, recipes: r.list }))
 		.filter((r) => r.recipes.length);
 
-	const plan: ImportPlan = { exportedAt: new Date(data.exportedAt * 1000), guild: data.player?.guild ?? null, updates: [], withoutSheet: [], ambiguous: [], notFound: [], rosterSize: data.roster?.length ?? 0 };
+	const plan: ImportPlan = { exportedAt: new Date(data.exportedAt * 1000), guild: data.player?.guild ?? null, updates: [], withoutSheet: [], ambiguous: [], outdated: [], notFound: [], rosterSize: data.roster?.length ?? 0 };
 
 	const seen = new Set<string>();
 	const people = [...(data.roster ?? []).map((m) => ({ name: m.name, member: m })), ...[...professions.keys()].map((n) => ({ name: n, member: undefined }))];
@@ -164,6 +168,16 @@ export function planImport(data: GameExport): ImportPlan {
 		}
 		const { c, player } = matches[0];
 		const update: CharacterUpdate = { characterId: c.id, name: c.name, player };
+		// Fichier renvoyé après coup (autre compte WoW du même PC, export d'un autre joueur…) :
+		// les données de la fiche sont plus récentes, on ne revient pas en arrière. Seules ses
+		// recettes encore inconnues s'ajoutent : la fiche a pu être mise à jour par un registre
+		// de guilde, qui n'en contient pas, et une recette apprise ne se perd pas.
+		if (c.gameExportedAt && c.gameExportedAt.getTime() >= plan.exportedAt.getTime()) {
+			plan.outdated.push(c.name);
+			const added = data.player && nameKey(data.player.name) === key ? addRecipes(c.knownRecipes, recipes) : null;
+			plan.updates.push({ ...update, outdated: true, ...(added && { recipes: added }) });
+			continue;
+		}
 		const level = member?.level ?? (data.player && nameKey(data.player.name) === key ? data.player.level : undefined);
 		if (level && level !== c.level) update.level = { from: c.level, to: level };
 		const profs = professions.get(key);
@@ -203,6 +217,26 @@ function mergeRecipes(current: KnownRecipes[] | null, incoming: KnownRecipes[]) 
 	return [...kept, ...incoming];
 }
 
+/** Recettes d'un export plus ancien : ajoute seulement celles que la fiche ne connaît pas (null si aucune). */
+function addRecipes(current: KnownRecipes[] | null, older: KnownRecipes[]) {
+	let added = false;
+	const result = (current ?? []).map((r) => ({ ...r, recipes: [...r.recipes] }));
+	for (const o of older) {
+		const known = result.find((r) => r.profession === o.profession);
+		if (!known) {
+			result.push(o);
+			added ||= o.recipes.length > 0;
+			continue;
+		}
+		for (const recipe of o.recipes) {
+			if (known.recipes.some((r) => r.id === recipe.id)) continue;
+			known.recipes.push(recipe);
+			added = true;
+		}
+	}
+	return added ? result : null;
+}
+
 /** Applique le plan ; renvoie le nombre de persos modifiés. */
 export function applyImport(plan: ImportPlan) {
 	let changed = 0;
@@ -211,6 +245,7 @@ export function applyImport(plan: ImportPlan) {
 	db().transaction((tx) => {
 		for (const u of plan.updates) {
 			const values: Partial<Character> = { gameSyncedAt: now };
+			if (!u.outdated) values.gameExportedAt = plan.exportedAt;
 			if (u.level) values.level = u.level.to;
 			if (u.professions) values.professions = u.professions.to;
 			if (u.recipes) values.knownRecipes = u.recipes;
@@ -222,7 +257,10 @@ export function applyImport(plan: ImportPlan) {
 			tx.update(schema.characters).set(values).where(eq(schema.characters.id, u.characterId)).run();
 		}
 	});
-	// Référence des badges « vu en jeu » : seulement pour un export qui contient le registre.
-	if (plan.rosterSize > 0) setGameImport({ appliedAt: now.getTime() / 1000, exportedAt: Math.floor(plan.exportedAt.getTime() / 1000), rosterSize: plan.rosterSize });
+	// Référence des badges « vu en jeu » : seulement pour un export qui contient le registre,
+	// et pas pour un registre plus ancien que celui déjà retenu.
+	const reference = getGameImport();
+	const older = reference && Math.floor(plan.exportedAt.getTime() / 1000) < reference.exportedAt;
+	if (plan.rosterSize > 0 && !older) setGameImport({ appliedAt: now.getTime() / 1000, exportedAt: Math.floor(plan.exportedAt.getTime() / 1000), rosterSize: plan.rosterSize });
 	return changed;
 }

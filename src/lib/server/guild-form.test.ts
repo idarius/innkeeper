@@ -25,3 +25,17 @@ describe('profil de guilde : type de serveur', () => {
 		expect(guildSchema.parse(base).serverType).toBeNull();
 	});
 });
+
+describe('profil de guilde : images', () => {
+	it('refuse un fichier qui n’est pas l’image annoncée', async () => {
+		const form = formData({ ...base, serverType: 'pvp' });
+		form.append('logo', new File(['<svg onload="alert(1)"></svg>'], 'logo.png', { type: 'image/png' }));
+		expect((await parseGuildForm(form, null)).errors?.logo).toMatch(/Format/);
+	});
+
+	it('accepte une vraie image JPEG', async () => {
+		const form = formData({ ...base, serverType: 'pvp' });
+		form.append('logo', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10])], 'logo.jpg', { type: 'image/jpeg' }));
+		expect((await parseGuildForm(form, null)).data?.logo).toMatch(/^logo-\d+\.jpg$/);
+	});
+});

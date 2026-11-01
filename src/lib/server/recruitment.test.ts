@@ -70,7 +70,7 @@ describe('candidatures', () => {
 		const app = listApplications(['pending']).find((a) => a.app.userId === 'c1')!.app;
 		// Sans bot, l'arrivée sur Discord ne peut pas se faire : la décision est quand même enregistrée.
 		const arrival = await acceptApplication(app, officer, 'Bienvenue !');
-		expect(arrival).toMatch(/bot/);
+		expect(arrival?.arrivalError).toMatch(/bot/);
 		const saved = getApplication(app.id)!;
 		expect(saved.status).toBe('accepted');
 		expect(saved.decidedBy).toBe('Drektar');
@@ -91,6 +91,21 @@ describe('candidatures', () => {
 		// Refus vieux de 31 jours : plus de blocage.
 		db().update(schema.applications).set({ decidedAt: new Date(Date.now() - 31 * 86_400_000) }).run();
 		expect(applyBlocker('c3')).toBeNull();
+	});
+
+	it('une seule décision par candidature, même si deux officiers valident en même temps', async () => {
+		createUser('c4');
+		const app = submitApplication('c4', draft('Garrosh'), answers);
+		// Les deux officiers ont chargé la candidature quand elle était encore en attente.
+		const [first, second] = await Promise.all([acceptApplication(app, officer, null), acceptApplication(app, officer2, null)]);
+		expect([first, second].filter(Boolean)).toHaveLength(1);
+		expect(db().select().from(schema.characters).where(eq(schema.characters.userId, 'c4')).all()).toHaveLength(1);
+		expect(getApplication(app.id)?.decidedBy).toBe('Drektar');
+
+		// Un refus ou un retrait arrivé après coup ne change plus rien.
+		expect(refuseApplication(app, officer2, 'Trop tard')).toBe(false);
+		withdrawApplication(app);
+		expect(getApplication(app.id)?.status).toBe('accepted');
 	});
 
 	it('identifie qui vote : officier Discord ou admin local, jamais un simple membre', () => {

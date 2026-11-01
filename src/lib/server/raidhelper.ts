@@ -1,5 +1,9 @@
+import { remember } from './bounded';
+
 const API = 'https://raid-helper.dev/api/v4';
 const CACHE_TTL_MS = 60_000;
+// Événements gardés en mémoire au plus (les sorties d'une guilde tiennent largement dedans).
+const CACHE_MAX = 500;
 
 // Sous-ensemble utilisé de la réponse GET /api/v4/events/<id> (pas de clé requise).
 export interface RaidHelperSignUp {
@@ -56,13 +60,13 @@ export async function fetchEvent(id: string): Promise<RaidHelperEvent | null> {
 
 	const res = await fetch(`${API}/events/${id}`, { signal: AbortSignal.timeout(10_000) });
 	if (res.status === 404) {
-		cache.set(id, { at: Date.now(), event: null });
+		remember(cache, id, { at: Date.now(), event: null }, CACHE_MAX);
 		return null;
 	}
 	if (!res.ok) throw new Error(`Raid-Helper a répondu ${res.status}`);
 
 	const event = (await res.json()) as RaidHelperEvent;
-	cache.set(id, { at: Date.now(), event });
+	remember(cache, id, { at: Date.now(), event }, CACHE_MAX);
 	return event;
 }
 

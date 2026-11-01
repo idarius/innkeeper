@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { getGuild } from '$lib/server/settings';
 import { ImportError } from '$lib/server/game-import';
-import { identify, MAX_SYNC_BYTES, SyncError, syncExport } from '$lib/server/sync';
+import { authenticate, MAX_SYNC_BYTES, SyncError, syncExport } from '$lib/server/sync';
 import type { RequestHandler } from './$types';
 
 // Adresse du programme InnkeeperSync (PC du joueur). Réponses en JSON, messages en français
@@ -14,9 +14,9 @@ const failure = (e: unknown) => {
 };
 
 /** Vérifie la clé : le programme l'appelle à la configuration. */
-export const GET: RequestHandler = ({ request }) => {
+export const GET: RequestHandler = async ({ request }) => {
 	try {
-		const who = identify(request.headers.get('authorization'));
+		const who = await authenticate(request.headers.get('authorization'));
 		return json({
 			guild: getGuild()?.name ?? null,
 			player: who.user.displayName,
@@ -30,7 +30,7 @@ export const GET: RequestHandler = ({ request }) => {
 /** Reçoit le fichier InnkeeperSync.lua, brut (application/octet-stream). */
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const who = identify(request.headers.get('authorization'));
+		const who = await authenticate(request.headers.get('authorization'));
 		if (Number(request.headers.get('content-length') ?? 0) > MAX_SYNC_BYTES) throw new SyncError('Fichier trop lourd (5 Mo maximum).', 413);
 		const source = await request.text();
 		if (source.length > MAX_SYNC_BYTES) throw new SyncError('Fichier trop lourd (5 Mo maximum).', 413);

@@ -48,8 +48,22 @@ export function submitApplication(
 	return app;
 }
 
+/**
+ * Pose l'issue d'une candidature encore en attente. Renvoie false si elle a déjà été tranchée
+ * (deux officiers qui valident en même temps, double clic, retrait du candidat) : rien ne change.
+ */
+function decide(app: Application, values: Partial<Application> & { status: Exclude<Application['status'], 'pending'> }) {
+	return (
+		db()
+			.update(applications)
+			.set({ decidedAt: new Date(), ...values })
+			.where(and(eq(applications.id, app.id), eq(applications.status, 'pending')))
+			.run().changes > 0
+	);
+}
+
 export function withdrawApplication(app: Application) {
-	db().update(applications).set({ status: 'withdrawn', decidedAt: new Date() }).where(eq(applications.id, app.id)).run();
+	return decide(app, { status: 'withdrawn' });
 }
 
 export function getApplication(id: number) {
@@ -102,31 +116,28 @@ export const removeVote = (app: Application, voter: Voter) =>
 		.where(and(eq(applicationVotes.applicationId, app.id), eq(applicationVotes.voterId, voter.id)))
 		.run();
 
-/** Acceptation : le perso de la candidature rejoint la guilde, puis le bot fait entrer la recrue. */
+/**
+ * Acceptation : le perso de la candidature rejoint la guilde, puis le bot fait entrer la recrue.
+ * Renvoie null si la candidature n'était plus en attente.
+ */
 export async function acceptApplication(app: Application, voter: Voter, message: string | null) {
-	db()
-		.update(applications)
-		.set({ status: 'accepted', decidedBy: voter.name, decidedAt: new Date(), decisionMessage: message })
-		.where(eq(applications.id, app.id))
-		.run();
+	if (!decide(app, { status: 'accepted', decidedBy: voter.name, decisionMessage: message })) return null;
 	// Premier perso du joueur : il devient son main automatiquement.
 	createCharacter(app.userId, { ...(app.character as CharacterInput), isMain: false });
 	const accepted = getApplication(app.id)!;
-	const arrival = await ensureArrival(accepted);
+	const arrivalError = await ensureArrival(accepted);
 	void announce(accepted, 'accepted');
 	void notifyCandidate(accepted);
-	return arrival;
+	return { arrivalError };
 }
 
+/** Refus ; renvoie false si la candidature n'était plus en attente. */
 export function refuseApplication(app: Application, voter: Voter, message: string | null) {
-	db()
-		.update(applications)
-		.set({ status: 'refused', decidedBy: voter.name, decidedAt: new Date(), decisionMessage: message })
-		.where(eq(applications.id, app.id))
-		.run();
+	if (!decide(app, { status: 'refused', decidedBy: voter.name, decisionMessage: message })) return false;
 	const refused = getApplication(app.id)!;
 	void announce(refused, 'refused');
 	void notifyCandidate(refused);
+	return true;
 }
 
 /**
@@ -189,7 +200,7 @@ async function fallbackInvite(app: Application) {
 function markArrived(app: Application, memberRoles: string[]) {
 	const user = db().select({ roles: users.roles }).from(users).where(eq(users.discordId, app.userId)).get();
 	const roles = [...new Set([...(user?.roles ?? []), ...memberRoles])];
-	db().update(users).set({ roles, joinedAt: new Date() }).where(eq(users.discordId, app.userId)).run();
+	db().update(users).set({ roles, inGuild: true, rolesCheckedAt: new Date(), joinedAt: new Date() }).where(eq(users.discordId, app.userId)).run();
 	db().update(applications).set({ roleAssignedAt: new Date() }).where(eq(applications.id, app.id)).run();
 }
 

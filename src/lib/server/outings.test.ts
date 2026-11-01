@@ -173,7 +173,13 @@ describe('types de sortie et instances', () => {
 });
 
 describe('images des sorties', () => {
-	const png = (bytes = 10) => new File([new Uint8Array(bytes)], 'a.png', { type: 'image/png' });
+	// Signature PNG suivie de zéros : assez pour passer pour une image.
+	const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+	const png = (bytes = 10) => {
+		const data = new Uint8Array(Math.max(bytes, PNG.length));
+		data.set(PNG);
+		return new File([data], 'a.png', { type: 'image/png' });
+	};
 
 	it('l’image de l’instance passe avant celle du type', async () => {
 		process.env.ORIGIN = 'https://guilde.test';
@@ -189,6 +195,9 @@ describe('images des sorties', () => {
 		expect(await saveActivityImage('instance:inconnue', png())).toMatch(/inconnue/);
 		expect(await saveActivityImage('activity:pvp', new File(['x'], 'a.gif', { type: 'image/gif' }))).toMatch(/Format/);
 		expect(await saveActivityImage('activity:pvp', png(3 * 1024 * 1024))).toMatch(/lourde/);
+		// Type annoncé par le navigateur, mais contenu d'un autre genre (page HTML renommée…).
+		expect(await saveActivityImage('activity:pvp', new File(['<html><script>alert(1)</script>'], 'a.png', { type: 'image/png' }))).toMatch(/Format/);
+		expect(await saveActivityImage('activity:pvp', new File([new Uint8Array(10)], 'a.webp', { type: 'image/webp' }))).toMatch(/Format/);
 		expect(publishedImage('../guilde.db')).toBeUndefined();
 	});
 });

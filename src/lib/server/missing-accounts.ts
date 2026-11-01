@@ -34,7 +34,7 @@ export async function membersWithoutAccount(): Promise<MissingAccount[]> {
 
 	return members
 		.filter((m) => !m.user.bot && !known.has(m.user.id))
-		.map((m) => ({ m, permission: permissionFor(m.roles) }))
+		.map((m) => ({ m, permission: permissionFor({ roles: m.roles, inGuild: true }) }))
 		.filter((x): x is { m: (typeof members)[number]; permission: 'officer' | 'member' } => x.permission !== null)
 		.map(({ m, permission }) => {
 			const top = roles.find((r) => m.roles.includes(r.id));

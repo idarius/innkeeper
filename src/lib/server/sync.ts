@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { audit } from './audit';
 import { db, schema } from './db';
 import { applyImport, planImport, readExport } from './game-import';
-import { permissionFor, type Permission } from './permissions';
+import { permissionFor, refreshMembership, type Permission } from './permissions';
 
 // Synchronisation automatique : le programme InnkeeperSync, sur le PC du joueur, envoie le
 // fichier de l'addon dès que le jeu l'écrit (déconnexion, /reload). Il s'identifie par une
@@ -59,9 +59,11 @@ export interface SyncIdentity {
 	user: { id: string; displayName: string; avatar: string | null; permission: Permission };
 }
 
-/** Clé lue dans l'en-tête `Authorization: Bearer …`. Les droits suivent les rôles Discord actuels. */
+const bearer = (header: string | null) => /^Bearer\s+(iks_[\w-]+)$/.exec(header ?? '')?.[1];
+
+/** Clé lue dans l'en-tête `Authorization: Bearer …`, d'après les rôles Discord en cache. */
 export function identify(header: string | null): SyncIdentity {
-	const token = /^Bearer\s+(iks_[\w-]+)$/.exec(header ?? '')?.[1];
+	const token = bearer(header);
 	if (!token) throw new SyncError('Clé de synchronisation manquante.', 401);
 	const row = db()
 		.select({ t: syncTokens, u: users })
@@ -70,7 +72,7 @@ export function identify(header: string | null): SyncIdentity {
 		.where(eq(syncTokens.tokenHash, sha256(token)))
 		.get();
 	if (!row) throw new SyncError('Clé inconnue ou révoquée : crée-en une nouvelle sur le site (Mes persos → Synchronisation).', 401);
-	const permission = permissionFor(row.u.roles);
+	const permission = permissionFor(row.u);
 	if (!permission) throw new SyncError('Ce compte n’a plus accès au site de la guilde.', 403);
 	return {
 		tokenId: row.t.id,
@@ -78,6 +80,14 @@ export function identify(header: string | null): SyncIdentity {
 		lastFileHash: row.t.lastFileHash,
 		user: { id: row.u.discordId, displayName: row.u.displayName, avatar: row.u.avatar, permission }
 	};
+}
+
+/** Comme `identify`, après avoir relu les rôles du titulaire de la clé sur Discord (bot). */
+export async function authenticate(header: string | null): Promise<SyncIdentity> {
+	const token = bearer(header);
+	const owner = token && db().select({ userId: syncTokens.userId }).from(syncTokens).where(eq(syncTokens.tokenHash, sha256(token))).get();
+	if (owner) await refreshMembership(owner.userId);
+	return identify(header);
 }
 
 export interface SyncResult {

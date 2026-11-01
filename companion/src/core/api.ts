@@ -32,10 +32,19 @@ export interface SyncResult {
 	synced: number;
 }
 
+// Au-delà, la requête est abandonnée : un site muet bloquerait sinon le moteur, qui
+// n'enchaîne pas de nouveau relevé tant qu'un envoi est en cours. Large pour un fichier de
+// quelques Mo sur une connexion lente.
+const TIMEOUT_MS = 60_000;
+
 async function request<T>(p: Platform, siteUrl: string, token: string, init: RequestInit = {}): Promise<T> {
 	let res: Response;
 	try {
-		res = await p.fetch(`${siteUrl}/api/sync`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } });
+		res = await p.fetch(`${siteUrl}/api/sync`, {
+			...init,
+			headers: { authorization: `Bearer ${token}`, ...init.headers },
+			signal: AbortSignal.timeout(TIMEOUT_MS)
+		});
 	} catch (e) {
 		throw new ApiError(`Site injoignable (${e instanceof Error ? e.message : e}).`, 0);
 	}

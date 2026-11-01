@@ -7,6 +7,20 @@ import { DEFAULT_ACCENTS, guildSchema, type GuildProfile } from './settings';
 export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const CONTENT_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
 
+// Premiers octets de chaque format : le type annoncé par le navigateur ne prouve rien.
+const SIGNATURES: Record<string, (b: Uint8Array) => boolean> = {
+	png: (b) => [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((x, i) => b[i] === x),
+	jpg: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+	webp: (b) => ascii(b, 0, 4) === 'RIFF' && ascii(b, 8, 12) === 'WEBP'
+};
+const ascii = (b: Uint8Array, from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+
+/** Extension d'une image envoyée si son contenu correspond au type annoncé (PNG, JPEG, WebP), sinon null. */
+export function imageExtension(type: string, data: Uint8Array) {
+	const ext = IMAGE_TYPES[type];
+	return ext && SIGNATURES[ext](data) ? ext : null;
+}
+
 // Images de la guilde : champ du formulaire → clé du profil, taille maximale.
 const IMAGES = {
 	logo: { maxBytes: 1024 * 1024, label: '1 Mo' },
@@ -37,10 +51,12 @@ export function serveUpload(file: string | null | undefined) {
 async function readImage(form: FormData, kind: ImageKind) {
 	const file = form.get(kind);
 	if (!(file instanceof File) || file.size === 0) return { upload: null };
-	const ext = IMAGE_TYPES[file.type];
-	if (!ext) return { error: 'Format accepté : PNG, JPEG ou WebP' };
+	if (!IMAGE_TYPES[file.type]) return { error: 'Format accepté : PNG, JPEG ou WebP' };
 	if (file.size > IMAGES[kind].maxBytes) return { error: `Image trop lourde (${IMAGES[kind].label} maximum)` };
-	return { upload: { data: Buffer.from(await file.arrayBuffer()), ext } };
+	const data = Buffer.from(await file.arrayBuffer());
+	const ext = imageExtension(file.type, data);
+	if (!ext) return { error: 'Format accepté : PNG, JPEG ou WebP (le fichier n’est pas une image de ce type)' };
+	return { upload: { data, ext } };
 }
 
 /** Lit le formulaire de profil de guilde ; enregistre ou supprime logo et bannière au passage. */

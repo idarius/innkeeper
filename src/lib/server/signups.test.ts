@@ -56,8 +56,10 @@ describe('inscription depuis le site', () => {
 	});
 
 	afterEach(() => vi.unstubAllGlobals());
-	const event = (signUps: Partial<RaidHelperEvent['signUps'][number]>[] = []) =>
-		({ id: '900', serverId: '1', title: 'MC', startTime: 0, signUps }) as RaidHelperEvent;
+	// Sortie dans une semaine : on peut encore s'y inscrire.
+	const future = Math.floor(Date.now() / 1000) + 7 * 86400;
+	const event = (signUps: Partial<RaidHelperEvent['signUps'][number]>[] = [], startTime = future) =>
+		({ id: '900', serverId: '1', title: 'MC', startTime, signUps }) as RaidHelperEvent;
 
 	/**
 	 * Faux Raid-Helper qui reproduit ses réponses réelles (relevées le 28/10/2026) :
@@ -99,6 +101,15 @@ describe('inscription depuis le site', () => {
 		expect(await cancelSignup(event([{ id: 42, userId: 's1' }]), 'cle', 's1')).toBeNull();
 		expect(calls[2]).toMatchObject({ method: 'DELETE', url: 'https://raid-helper.dev/api/v4/events/900/signups/42' });
 		expect(signUps).toHaveLength(0);
+	});
+
+	it('sortie commencée ou passée : ni inscription ni désinscription, sans appeler Raid-Helper', async () => {
+		const c = createCharacter('s1', { name: 'Voljin', surname: 'Haal', race: 'troll', class: 'shaman', spec: 'restoration', role: 'healer', spec2: null, role2: null, level: 60, professions: [], recipes: null, pve: null, pvp: null, notes: null, isMain: false });
+		const calls = fakeRaidHelper([{ id: 42, userId: 's1' }]);
+		const past = Math.floor(Date.now() / 1000) - 3600;
+		expect(await saveSignup(event([], past), 'cle', 's1', { characterId: c.id, slot: 'main', status: 'present' })).toMatch(/commencé/);
+		expect(await cancelSignup(event([{ id: 42, userId: 's1' }], past), 'cle', 's1')).toMatch(/commencé/);
+		expect(calls).toHaveLength(0);
 	});
 
 	it('refuse le perso d’un autre joueur', async () => {

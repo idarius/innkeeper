@@ -1,5 +1,7 @@
+import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createUser } from '../../test/helpers';
+import { db, schema } from './db';
 import { dueReviewCount, listNewcomers, markReviewed, setJoinedAt } from './progression';
 import { recruitmentSchema, setDiscord, setRecruitment } from './settings';
 
@@ -59,6 +61,10 @@ describe('progression des nouveaux membres', () => {
 			expect(fetch).toHaveBeenCalledTimes(1);
 			// Le cache est mis à jour : « sansdate », à revoir, est parti, et « ancien » a déjà été revu.
 			expect(dueReviewCount()).toBe(0);
+			// Parti du serveur : il perd aussi l'accès au site.
+			const inGuild = (id: string) => db().select().from(schema.users).where(eq(schema.users.discordId, id)).get()?.inGuild;
+			expect(inGuild('sansdate')).toBe(false);
+			expect(inGuild('recent')).toBe(true);
 		});
 	});
 });

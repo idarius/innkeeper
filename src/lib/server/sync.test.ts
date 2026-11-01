@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseConnectLink } from '../../../companion/src/core/config';
 import { GET, POST } from '../../routes/api/sync/+server';
 import { actions } from '../../routes/persos/synchro/+page.server';
 import { asMember, createUser, horde } from '../../test/helpers';
 import { createCharacter, getCharacter } from './characters';
 import { recordSeenRoles, updateRole } from './permissions';
-import { getGameImport, setAccess } from './settings';
-import { createSyncToken, identify, listSyncTokens, MAX_TOKENS, revokeSyncToken, SyncError, syncExport } from './sync';
+import { getGameImport, setAccess, setDiscord } from './settings';
+import { authenticate, createSyncToken, identify, listSyncTokens, MAX_TOKENS, revokeSyncToken, SyncError, syncExport } from './sync';
 
 horde();
 
@@ -74,6 +74,11 @@ describe('clés de synchronisation', () => {
 		expect(() => identify('Bearer iks_inventee')).toThrow(/inconnue/);
 		const token = createSyncToken('parti', 'Vieux PC');
 		expect(() => identify(`Bearer ${token}`)).toThrow(expect.objectContaining({ status: 403 }));
+		// Même en mode « tout membre du serveur » : un compte qui n'est plus sur le serveur est refusé.
+		setAccess({ mode: 'all-members' });
+		createUser('exclu', [], { inGuild: false });
+		expect(() => identify(`Bearer ${createSyncToken('exclu', 'PC')}`)).toThrow(expect.objectContaining({ status: 403 }));
+		setAccess({ mode: 'mapped-roles' });
 	});
 
 	it(`sont limitées à ${MAX_TOKENS} par joueur`, () => {
@@ -128,5 +133,18 @@ describe('bouton « Connecter InnkeeperSync »', () => {
 		const result = (await actions.connect({ locals: asMember('drektar'), url: new URL('https://ma-guilde.fr/persos/synchro') } as never)) as { token: string; link: string };
 		expect(parseConnectLink(result.link)).toEqual({ siteUrl: 'https://ma-guilde.fr', token: result.token });
 		expect(identify(`Bearer ${result.token}`).user.id).toBe('drektar');
+	});
+});
+
+describe('clé d’un membre exclu entre-temps', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('les droits de la clé suivent les rôles relus sur Discord', async () => {
+		setDiscord({ clientId: '111111111111111111', clientSecret: 'secret-secret-123', guildId: '222222222222222222', botToken: 'b' });
+		createUser('banni', [MEMBRE], { rolesCheckedAt: new Date(Date.now() - 3_600_000) });
+		const token = createSyncToken('banni', 'PC');
+		vi.stubGlobal('fetch', async () => new Response('', { status: 404 }));
+		await expect(authenticate(`Bearer ${token}`)).rejects.toMatchObject({ status: 403 });
+		await expect(authenticate('Bearer iks_inventee')).rejects.toMatchObject({ status: 401 });
 	});
 });

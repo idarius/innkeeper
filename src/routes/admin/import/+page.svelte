@@ -108,6 +108,9 @@
 		{#if plan.ambiguous.length}
 			<p class="warn">Plusieurs fiches portent ces noms, elles ne sont pas mises à jour : {plan.ambiguous.join(', ')}.</p>
 		{/if}
+		{#if plan.outdated.length}
+			<p class="warn">Ces fiches ont déjà des données d'un export plus récent, elles ne sont pas remplacées : {plan.outdated.join(', ')}.</p>
+		{/if}
 
 		<form method="POST" action="?/apply" use:enhance class="row">
 			<input type="hidden" name="token" value={form.token} />

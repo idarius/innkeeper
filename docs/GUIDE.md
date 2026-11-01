@@ -173,7 +173,7 @@ Les officiers peuvent modifier ou supprimer **toutes** les sorties, et proposer 
 Admin → **Sorties** contient aussi :
 
 - les **salons** des sorties officielles et des sorties membres ;
-- les **images des sorties** : une par type et par instance, affichées sur Discord et sur le site (PNG, JPEG ou WebP, 2 Mo au plus, format 16:9 conseillé). N'utilise que des images que la guilde a le droit de diffuser.
+- les **images des sorties** : une par type et par instance, affichées sur Discord et sur le site (vrai fichier PNG, JPEG ou WebP, dont l’extension correspond au contenu ; 2 Mo au plus, format 16:9 conseillé). N'utilise que des images que la guilde a le droit de diffuser.
 
 ### Import du jeu
 
@@ -185,10 +185,11 @@ Admin → **Import du jeu**, à faire par un officier de temps en temps (une foi
 4. Vérifie l'**aperçu** :
    - niveaux et métiers qui changent ;
    - **membres de la guilde sans fiche** (à relancer) ;
-   - **fiches introuvables en jeu** (nom mal écrit ?).
+   - **fiches introuvables en jeu** (nom mal écrit ?) ;
+   - fiches déjà à jour d'après un **export plus récent** : un vieux fichier ne fait pas revenir un perso en arrière (seules ses recettes encore inconnues s'ajoutent).
 5. **Appliquer l'import**.
 
-L'addon n'envoie rien sur Internet ; il écrit seulement ce fichier.
+L'addon n'envoie rien sur Internet ; il écrit seulement ce fichier. Il n'exporte ni les notes du registre (publiques et d'officier) ni la zone des membres.
 
 **Plus simple : la synchronisation automatique.** Avec l'application InnkeeperSync pour PC, connectée par un officier (voir plus haut), le registre de la guilde est envoyé tout seul à chaque déconnexion, sans aperçu à valider.
 

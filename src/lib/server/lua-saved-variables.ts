@@ -13,6 +13,7 @@ export interface LuaTable {
 export class LuaParseError extends Error {}
 
 const MAX_DEPTH = 64;
+const utf8 = new TextDecoder();
 
 /** Variables globales du fichier : `Nom = valeur`. */
 export function parseSavedVariables(source: string): Record<string, LuaValue> {
@@ -131,22 +132,36 @@ class Parser {
 	string(): string {
 		const quote = this.s[this.pos++];
 		let out = '';
+		// Octets écrits en \ddd, décodés ensemble : un caractère accentué en UTF-8 en prend deux.
+		let bytes: number[] = [];
+		const flush = () => {
+			if (bytes.length) out += utf8.decode(Uint8Array.from(bytes));
+			bytes = [];
+		};
 		while (!this.end()) {
 			const c = this.s[this.pos++];
-			if (c === quote) return out;
+			if (c === quote) {
+				flush();
+				return out;
+			}
 			if (c !== '\\') {
+				flush();
 				out += c;
 				continue;
 			}
 			const e = this.s[this.pos++];
 			const simple: Record<string, string> = { n: '\n', t: '\t', r: '\r', a: '\x07', b: '\b', f: '\f', v: '\v', '\\': '\\', '"': '"', "'": "'", '\n': '\n' };
-			if (e in simple) out += simple[e];
-			else if (/\d/.test(e)) {
+			if (/\d/.test(e)) {
 				// \ddd : octet en décimal (WoW écrit l'UTF-8 octet par octet pour %q).
 				let digits = e;
 				while (digits.length < 3 && /\d/.test(this.peek() ?? '')) digits += this.s[this.pos++];
-				out += String.fromCharCode(Number(digits));
-			} else out += e;
+				const byte = Number(digits);
+				if (byte > 255) this.fail('Octet invalide');
+				bytes.push(byte);
+				continue;
+			}
+			flush();
+			out += e in simple ? simple[e] : e;
 		}
 		this.fail('Chaîne non terminée');
 	}

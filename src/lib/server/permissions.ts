@@ -1,5 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
+import { botReady, guildMember } from './bot';
 import { db, schema } from './db';
+import type { GuildMember } from './discord';
 import { getAccess, getDiscord } from './settings';
 
 export type Permission = 'officer' | 'member';
@@ -17,12 +19,70 @@ function permissionsByRole() {
 	return rolePermissions;
 }
 
-/** Permission sur le site d'après les rôles Discord du membre. `null` = pas d'accès. */
-export function permissionFor(roles: string[]): Permission | null {
+/**
+ * Permission sur le site d'après les rôles Discord du membre. `null` = pas d'accès.
+ * Un compte absent du serveur de guilde n'a jamais accès : ses rôles en cache ne comptent plus.
+ */
+export function permissionFor({ roles, inGuild }: { roles: string[]; inGuild: boolean }): Permission | null {
+	if (!inGuild) return null;
 	const map = permissionsByRole();
 	if (roles.some((r) => map.get(r) === 'officer')) return 'officer';
 	if (roles.some((r) => map.get(r) === 'member')) return 'member';
 	return getAccess().mode === 'all-members' ? 'member' : null;
+}
+
+/**
+ * Connexion Discord : met à jour le joueur avec son profil et sa situation sur le serveur
+ * (`member` : réponse de Discord, `null` s'il n'est pas sur le serveur de la guilde).
+ */
+export function recordDiscordLogin(
+	discordId: string,
+	profile: { username: string; name: string | null | undefined; image: string | null | undefined },
+	member: GuildMember | null
+) {
+	if (member) recordSeenRoles(member.roles);
+	const values = {
+		discordUsername: profile.username,
+		displayName: member?.nick ?? profile.name ?? profile.username,
+		avatar: profile.image ?? null,
+		roles: member?.roles ?? [],
+		inGuild: Boolean(member),
+		rolesCheckedAt: new Date(),
+		lastLogin: new Date()
+	};
+	db()
+		.insert(schema.users)
+		.values({ discordId, ...values })
+		.onConflictDoUpdate({ target: schema.users.discordId, set: values })
+		.run();
+}
+
+// Rôles relus au plus toutes les 10 minutes par joueur : assez pour qu'un retrait de rôle
+// ou une exclusion s'applique vite, sans solliciter Discord à chaque page.
+const ROLES_TTL_MS = 10 * 60_000;
+
+/**
+ * Relit sur Discord, avec le bot, les rôles d'un joueur et sa présence sur le serveur, si la
+ * dernière lecture date de plus de 10 minutes. Sans bot, ou si Discord ne répond pas, le cache
+ * de la dernière connexion reste valable : une panne de Discord ne doit fermer le site à personne.
+ */
+export async function refreshMembership(discordId: string) {
+	if (!botReady()) return;
+	const users = schema.users;
+	const user = db().select({ checkedAt: users.rolesCheckedAt }).from(users).where(eq(users.discordId, discordId)).get();
+	if (!user || (user.checkedAt && Date.now() - user.checkedAt.getTime() < ROLES_TTL_MS)) return;
+	let member: Awaited<ReturnType<typeof guildMember>>;
+	try {
+		member = await guildMember(discordId);
+	} catch {
+		return;
+	}
+	if (member) recordSeenRoles(member.roles);
+	db()
+		.update(users)
+		.set({ roles: member?.roles ?? [], inGuild: Boolean(member), rolesCheckedAt: new Date() })
+		.where(eq(users.discordId, discordId))
+		.run();
 }
 
 /** Découverte progressive : enregistre les rôles vus chez un membre qui se connecte. */

@@ -1,8 +1,7 @@
 import { SvelteKitAuth } from '@auth/sveltekit';
 import Discord from '@auth/sveltekit/providers/discord';
-import { db, schema } from '$lib/server/db';
 import { fetchGuildMember } from '$lib/server/discord';
-import { recordSeenRoles } from '$lib/server/permissions';
+import { recordDiscordLogin } from '$lib/server/permissions';
 import { getAuthSecret, getDiscord } from '$lib/server/settings';
 
 // Configuration lue à chaque requête : l'appli Discord se règle depuis l'interface
@@ -34,22 +33,8 @@ export const { handle, signIn, signOut } = SvelteKitAuth(async () => {
 
 				// Tout compte Discord peut se connecter : les membres accèdent au site, les
 				// autres (pas sur le serveur, ou sans rôle autorisé) seulement à leur candidature.
-				const discordId = account.providerAccountId;
 				const member = await fetchGuildMember(account.access_token, discord.guildId);
-				if (member) recordSeenRoles(member.roles);
-
-				const values = {
-					discordUsername: String(profile.username),
-					displayName: member?.nick ?? user.name ?? String(profile.username),
-					avatar: user.image ?? null,
-					roles: member?.roles ?? [],
-					lastLogin: new Date()
-				};
-				db()
-					.insert(schema.users)
-					.values({ discordId, ...values })
-					.onConflictDoUpdate({ target: schema.users.discordId, set: values })
-					.run();
+				recordDiscordLogin(account.providerAccountId, { username: String(profile.username), name: user.name, image: user.image }, member);
 				return true;
 			},
 			jwt({ token, account }) {

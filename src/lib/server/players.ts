@@ -11,7 +11,7 @@ export function getPlayer(id: string, officer: boolean) {
 	const user = db().select().from(schema.users).where(eq(schema.users.discordId, id)).get();
 	if (!user) return null;
 	const characters = listCharacters(id);
-	if (!permissionFor(user.roles) && characters.length === 0) return null;
+	if (!permissionFor(user) && characters.length === 0) return null;
 
 	// Rosters de chaque perso, limités à ceux que le visiteur a le droit de voir.
 	const memberships = characters.length

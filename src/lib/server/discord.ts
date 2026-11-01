@@ -11,7 +11,8 @@ export interface GuildMember {
  */
 export async function fetchGuildMember(accessToken: string, guildId: string) {
 	const res = await fetch(`${API}/users/@me/guilds/${guildId}/member`, {
-		headers: { Authorization: `Bearer ${accessToken}` }
+		headers: { Authorization: `Bearer ${accessToken}` },
+		signal: AbortSignal.timeout(10_000)
 	});
 	if (res.status === 404 || res.status === 403) return null;
 	if (!res.ok) throw new Error(`Discord a répondu ${res.status} pour le serveur ${guildId}`);

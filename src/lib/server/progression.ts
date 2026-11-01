@@ -50,7 +50,7 @@ export async function listNewcomers() {
 			for (const u of list) {
 				// Absent de la liste : il a quitté le serveur.
 				const roles = rolesById.get(u.discordId) ?? [];
-				db().update(users).set({ roles }).where(eq(users.discordId, u.discordId)).run();
+				db().update(users).set({ roles, inGuild: rolesById.has(u.discordId), rolesCheckedAt: new Date() }).where(eq(users.discordId, u.discordId)).run();
 				if (roles.includes(arrivalRoleId)) refreshed.push({ ...u, roles });
 			}
 			list = refreshed;

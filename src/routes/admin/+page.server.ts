@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			displayName: u.displayName,
 			username: u.discordUsername,
 			avatar: u.avatar,
-			permission: permissionFor(u.roles),
+			permission: permissionFor(u),
 			lastLogin: u.lastLogin,
 			characters: characters.filter((c) => c.userId === u.discordId)
 		}))

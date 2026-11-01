@@ -11,10 +11,11 @@ export function formData(values: Record<string, string | string[] | undefined>) 
 	return form;
 }
 
+/** Compte connu du site, présent sur le serveur de guilde sauf `extra.inGuild: false`. */
 export function createUser(id: string, roles: string[] = [], extra: Partial<typeof schema.users.$inferInsert> = {}) {
 	return db()
 		.insert(schema.users)
-		.values({ discordId: id, discordUsername: `user${id}`, displayName: `Joueur ${id}`, roles, ...extra })
+		.values({ discordId: id, discordUsername: `user${id}`, displayName: `Joueur ${id}`, roles, inGuild: true, ...extra })
 		.returning()
 		.get();
 }
